@@ -3,6 +3,7 @@ import { AuthGuard } from "@/components/auth-guard";
 import { useAuth } from "@/lib/auth";
 import { DashboardPage } from "@/routes/dashboard-page";
 import { LoginPage } from "@/routes/login-page";
+import { MaintenancePage } from "@/routes/maintenance-page";
 import { createBrowserRouter, Navigate } from "react-router";
 
 function LoginRouteGate() {
@@ -34,6 +35,10 @@ export const router = createBrowserRouter([
           {
             index: true,
             Component: DashboardPage,
+          },
+          {
+            path: "/maintenance",
+            Component: MaintenancePage,
           },
         ],
       },

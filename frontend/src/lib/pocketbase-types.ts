@@ -8,6 +8,8 @@ import type { RecordService } from 'pocketbase'
 export enum Collections {
 	Authorigins = "_authOrigins",
 	Externalauths = "_externalAuths",
+	MaintenanceLogs = "maintenance_logs",
+	MaintenanceTasks = "maintenance_tasks",
 	Mfas = "_mfas",
 	Otps = "_otps",
 	Superusers = "_superusers",
@@ -62,6 +64,36 @@ export type ExternalauthsRecord = {
 	updated: IsoAutoDateString
 }
 
+export type MaintenanceLogsRecord = {
+	created: IsoAutoDateString
+	id: string
+	note?: string
+	performed_at: IsoDateString
+	performed_by?: RecordIdString
+	task: RecordIdString
+	updated: IsoAutoDateString
+}
+
+export type MaintenanceTasksRecord = {
+	anchor_date?: IsoDateString
+	category?: string
+	created: IsoAutoDateString
+	description?: string
+	due_soon_days?: number
+	fixed_due_date?: IsoDateString
+	id: string
+	is_active?: boolean
+	last_completed_at?: IsoDateString
+	next_due_at?: IsoDateString
+	notes?: string
+	recurrence_unit?: "day" | "week" | "month" | "year"
+	recurrence_value?: number
+	status: "unscheduled" | "up_to_date" | "due_soon" | "overdue"
+	task_type: "recurring" | "one_off" | "log_only"
+	title: string
+	updated: IsoAutoDateString
+}
+
 export type MfasRecord = {
 	collectionRef: string
 	created: IsoAutoDateString
@@ -108,6 +140,8 @@ export type UsersRecord = {
 // Response types include system fields and match responses from the PocketBase API
 export type AuthoriginsResponse<Texpand = unknown> = Required<AuthoriginsRecord> & BaseSystemFields<Texpand>
 export type ExternalauthsResponse<Texpand = unknown> = Required<ExternalauthsRecord> & BaseSystemFields<Texpand>
+export type MaintenanceLogsResponse<Texpand = unknown> = Required<MaintenanceLogsRecord> & BaseSystemFields<Texpand>
+export type MaintenanceTasksResponse<Texpand = unknown> = Required<MaintenanceTasksRecord> & BaseSystemFields<Texpand>
 export type MfasResponse<Texpand = unknown> = Required<MfasRecord> & BaseSystemFields<Texpand>
 export type OtpsResponse<Texpand = unknown> = Required<OtpsRecord> & BaseSystemFields<Texpand>
 export type SuperusersResponse<Texpand = unknown> = Required<SuperusersRecord> & AuthSystemFields<Texpand>
@@ -118,6 +152,8 @@ export type UsersResponse<Texpand = unknown> = Required<UsersRecord> & AuthSyste
 export type CollectionRecords = {
 	_authOrigins: AuthoriginsRecord
 	_externalAuths: ExternalauthsRecord
+	maintenance_logs: MaintenanceLogsRecord
+	maintenance_tasks: MaintenanceTasksRecord
 	_mfas: MfasRecord
 	_otps: OtpsRecord
 	_superusers: SuperusersRecord
@@ -127,6 +163,8 @@ export type CollectionRecords = {
 export type CollectionResponses = {
 	_authOrigins: AuthoriginsResponse
 	_externalAuths: ExternalauthsResponse
+	maintenance_logs: MaintenanceLogsResponse
+	maintenance_tasks: MaintenanceTasksResponse
 	_mfas: MfasResponse
 	_otps: OtpsResponse
 	_superusers: SuperusersResponse
