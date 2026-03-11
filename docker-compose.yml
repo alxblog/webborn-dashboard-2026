@@ -1,0 +1,46 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const res = await fetch('http://127.0.0.1:3000/api/hello'); if (!res.ok) process.exit(1);"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        PB_VERSION: ${PB_VERSION:-0.27.2}
+    environment:
+      PB_HOST: ${PB_HOST:-0.0.0.0}
+      PB_PORT: ${PB_PORT:-8090}
+      PB_SUPERUSER_EMAIL: ${PB_SUPERUSER_EMAIL:-}
+      PB_SUPERUSER_PASSWORD: ${PB_SUPERUSER_PASSWORD:-}
+    ports:
+      - "${PB_PORT:-8090}:${PB_PORT:-8090}"
+    volumes:
+      - pocketbase_data:/pb/pb_data
+      - pocketbase_public:/pb/pb_public
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:${PB_PORT:-8090}/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  pocketbase_data:
+  pocketbase_public:

@@ -1,0 +1,18 @@
+services:
+  frontend:
+    environment:
+      NODE_ENV: development
+      HOST: 0.0.0.0
+      PORT: 3000
+    command: bun run dev
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+
+  backend:
+    volumes:
+      - ./backend/pb_data:/pb/pb_data
+      - ./backend/pb_public:/pb/pb_public
+
+volumes:
+  frontend_node_modules:
