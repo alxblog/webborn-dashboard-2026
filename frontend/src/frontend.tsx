@@ -9,6 +9,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router/dom";
 import { AuthProvider } from "@/lib/auth";
+import { loadRuntimeConfig } from "@/lib/config";
 import { router } from "@/router";
 import { Toaster } from "@/components/ui/sonner";
 import "./index.css";
@@ -23,11 +24,18 @@ const app = (
   </StrictMode>
 );
 
-if (import.meta.hot) {
-  // With hot module reloading, `import.meta.hot.data` is persisted.
-  const root = (import.meta.hot.data.root ??= createRoot(elem));
-  root.render(app);
-} else {
+async function bootstrap() {
+  await loadRuntimeConfig();
+
+  if (import.meta.hot) {
+    // With hot module reloading, `import.meta.hot.data` is persisted.
+    const root = (import.meta.hot.data.root ??= createRoot(elem));
+    root.render(app);
+    return;
+  }
+
   // The hot module reloading API is not available in production.
   createRoot(elem).render(app);
 }
+
+void bootstrap();

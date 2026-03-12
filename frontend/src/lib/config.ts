@@ -1,3 +1,32 @@
+declare global {
+  interface Window {
+    __APP_CONFIG__?: {
+      publicPocketBaseUrl?: string;
+    };
+  }
+}
+
+export async function loadRuntimeConfig() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    const response = await fetch("/app-config.js", {
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return;
+    }
+
+    const scriptContent = await response.text();
+    globalThis.eval?.(scriptContent);
+  } catch {
+    // Runtime config is optional. Fall back to bundled values or host inference.
+  }
+}
+
 function readEnvValue(name: string) {
   const processEnv =
     typeof globalThis !== "undefined" &&
@@ -28,6 +57,14 @@ function normalizeUrl(url: string) {
 }
 
 function getPublicPocketBaseUrl() {
+  if (typeof window !== "undefined") {
+    const runtimeConfiguredUrl = window.__APP_CONFIG__?.publicPocketBaseUrl?.trim();
+
+    if (runtimeConfiguredUrl) {
+      return normalizeUrl(runtimeConfiguredUrl);
+    }
+  }
+
   const configuredUrl =
     readEnvValue("PUBLIC_POCKETBASE_URL") ||
     readEnvValue("POCKETBASE_URL");
