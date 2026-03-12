@@ -77,7 +77,7 @@ function getPublicPocketBaseUrl() {
     return "http://localhost:8090";
   }
 
-  return normalizeUrl(`${window.location.protocol}//localhost:8090`);
+  return normalizeUrl(window.location.origin);
 }
 
 export const appConfig = {
