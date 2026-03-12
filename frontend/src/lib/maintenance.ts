@@ -36,6 +36,13 @@ type CreateLogInput = {
   performedBy?: string;
 };
 
+export type BulkImportTaskInput = CreateTaskInput;
+export type BulkImportLogInput = {
+  taskTitle: string;
+  performedAt: string;
+  note?: string;
+};
+
 const DEFAULT_DUE_SOON_DAYS = 14;
 
 function toDate(value?: string | null) {
@@ -263,4 +270,72 @@ export async function createMaintenanceLog(input: CreateLogInput) {
 
   await syncMaintenanceTask(input.taskId);
   return createdLog;
+}
+
+export async function deleteMaintenanceTask(taskId: string) {
+  await pb.collection("maintenance_tasks").delete(taskId);
+}
+
+export async function deleteMaintenanceLog(logId: string, taskId: string) {
+  await pb.collection("maintenance_logs").delete(logId);
+  await syncMaintenanceTask(taskId);
+}
+
+export async function importMaintenanceData(input: {
+  tasks: BulkImportTaskInput[];
+  logs: BulkImportLogInput[];
+}) {
+  const existingTasks = await listMaintenanceTasks();
+  const tasksByTitle = new Map(
+    existingTasks.map((task) => [task.title.trim().toLocaleLowerCase(), task] as const)
+  );
+
+  const createdTasks: MaintenanceTask[] = [];
+  const importedTaskIds = new Set<string>();
+
+  for (const task of input.tasks) {
+    const key = task.title.trim().toLocaleLowerCase();
+    if (!key || tasksByTitle.has(key)) {
+      continue;
+    }
+
+    const createdTask = await createMaintenanceTask(task);
+    tasksByTitle.set(key, createdTask);
+    createdTasks.push(createdTask);
+    importedTaskIds.add(createdTask.id);
+  }
+
+  const updatedTaskIds = new Set<string>();
+
+  for (const log of input.logs) {
+    const taskKey = log.taskTitle.trim().toLocaleLowerCase();
+    const task = tasksByTitle.get(taskKey);
+
+    if (!task) {
+      continue;
+    }
+
+    await pb.collection("maintenance_logs").create({
+      task: task.id,
+      performed_at: log.performedAt,
+      note: normalizeOptionalText(log.note),
+      performed_by: "",
+    });
+
+    updatedTaskIds.add(task.id);
+  }
+
+  for (const taskId of updatedTaskIds) {
+    await syncMaintenanceTask(taskId);
+  }
+
+  return {
+    createdTasks,
+    importedLogCount: input.logs.filter((log) =>
+      tasksByTitle.has(log.taskTitle.trim().toLocaleLowerCase())
+    ).length,
+    updatedTaskCount: updatedTaskIds.size,
+    createdTaskCount: createdTasks.length,
+    skippedTaskCount: input.tasks.length - createdTasks.length,
+  };
 }

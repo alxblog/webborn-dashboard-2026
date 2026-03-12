@@ -6,6 +6,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { DatePicker } from "@/components/ui/date-picker";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -20,8 +30,13 @@ import {
   computeTaskScheduleState,
   createMaintenanceLog,
   createMaintenanceTask,
+  deleteMaintenanceLog,
+  deleteMaintenanceTask,
+  importMaintenanceData,
   listMaintenanceLogs,
   listMaintenanceTasks,
+  type BulkImportLogInput,
+  type BulkImportTaskInput,
   type MaintenanceLog,
   type MaintenanceStatus,
   type MaintenanceTask,
@@ -30,8 +45,20 @@ import {
 } from "@/lib/maintenance";
 import { notifyError, notifySuccess } from "@/lib/notifications";
 import { cn } from "@/lib/utils";
-import { CalendarClock, CheckCircle2, History, Plus, Wrench } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { formatDistanceToNow } from "date-fns";
+import { fr } from "date-fns/locale";
+import {
+  CalendarClock,
+  CheckCircle2,
+  Download,
+  FileSpreadsheet,
+  History,
+  Plus,
+  Trash2,
+  Upload,
+  Wrench,
+} from "lucide-react";
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 
 type TaskFilter = "all" | MaintenanceStatus | "active_schedule";
 
@@ -53,6 +80,13 @@ type LogFormState = {
   note: string;
 };
 
+type ImportPreview = {
+  taskRows: BulkImportTaskInput[];
+  logRows: BulkImportLogInput[];
+  errors: string[];
+  headers: string[];
+};
+
 const DEFAULT_TASK_FORM: TaskFormState = {
   title: "",
   description: "",
@@ -65,6 +99,21 @@ const DEFAULT_TASK_FORM: TaskFormState = {
   dueSoonDays: "14",
   notes: "",
 };
+
+const IMPORT_TASK_HEADERS = [
+  "title",
+  "category",
+  "description",
+  "task_type",
+  "recurrence_value",
+  "recurrence_unit",
+  "anchor_date",
+  "fixed_due_date",
+  "due_soon_days",
+  "notes",
+] as const;
+
+const IMPORT_LOG_HEADERS = ["task_title", "performed_at", "note"] as const;
 
 function getTodayLocalIso() {
   const now = new Date();
@@ -84,6 +133,223 @@ function formatDate(value?: string | null) {
   }).format(new Date(value));
 }
 
+function formatRelativeDueDate(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return formatDistanceToNow(date, {
+    addSuffix: false,
+    locale: fr,
+  });
+}
+
+function parseCsvLine(line: string) {
+  const cells: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const nextChar = line[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        current += '"';
+        index += 1;
+        continue;
+      }
+
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      cells.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  cells.push(current.trim());
+  return cells.map((cell) => cell.replace(/^"|"$/g, "").trim());
+}
+
+function parseCsv(text: string) {
+  const lines = text
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (!lines.length) {
+    return { headers: [], rows: [] as Record<string, string>[] };
+  }
+
+  const headers = parseCsvLine(lines[0]);
+  const rows = lines.slice(1).map((line) => {
+    const cells = parseCsvLine(line);
+    return headers.reduce<Record<string, string>>((record, header, index) => {
+      record[header] = cells[index] ?? "";
+      return record;
+    }, {});
+  });
+
+  return { headers, rows };
+}
+
+function escapeCsvCell(value: string | number | null | undefined) {
+  const normalized = String(value ?? "");
+
+  if (normalized.includes(",") || normalized.includes('"') || normalized.includes("\n")) {
+    return `"${normalized.replace(/"/g, '""')}"`;
+  }
+
+  return normalized;
+}
+
+function buildCsv(headers: readonly string[], rows: Array<Array<string | number | null | undefined>>) {
+  const serializedRows = [
+    headers.map((header) => escapeCsvCell(header)).join(","),
+    ...rows.map((row) => row.map((cell) => escapeCsvCell(cell)).join(",")),
+  ];
+
+  return serializedRows.join("\n");
+}
+
+function downloadCsv(filename: string, content: string) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function isMaintenanceTaskType(value: string): value is MaintenanceTaskType {
+  return value === "recurring" || value === "one_off" || value === "log_only";
+}
+
+function isRecurrenceUnit(value: string): value is RecurrenceUnit {
+  return value === "day" || value === "week" || value === "month" || value === "year";
+}
+
+function normalizeDateValue(value: string) {
+  if (!value.trim()) {
+    return "";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`Date invalide: ${value}`);
+  }
+
+  return date.toISOString();
+}
+
+function buildImportPreview(text: string): ImportPreview {
+  const { headers, rows } = parseCsv(text);
+  const errors: string[] = [];
+  const hasTaskColumns = IMPORT_TASK_HEADERS.some((header) => headers.includes(header));
+  const hasLogColumns = IMPORT_LOG_HEADERS.every((header) => headers.includes(header));
+  const taskRows: BulkImportTaskInput[] = [];
+  const logRows: BulkImportLogInput[] = [];
+
+  if (!headers.length) {
+    return {
+      headers,
+      errors: ["Le fichier CSV est vide."],
+      taskRows,
+      logRows,
+    };
+  }
+
+  rows.forEach((row, index) => {
+    const lineNumber = index + 2;
+
+    if (hasTaskColumns && row.title?.trim()) {
+      const taskType = row.task_type?.trim() || "log_only";
+
+      if (!isMaintenanceTaskType(taskType)) {
+        errors.push(`Ligne ${lineNumber}: task_type invalide (${taskType}).`);
+      } else {
+        const recurrenceValue = row.recurrence_value?.trim()
+          ? Number(row.recurrence_value)
+          : undefined;
+        const recurrenceUnit = row.recurrence_unit?.trim();
+
+        if (taskType === "recurring") {
+          if (!recurrenceValue || recurrenceValue <= 0) {
+            errors.push(`Ligne ${lineNumber}: recurrence_value doit etre > 0.`);
+          }
+
+          if (!recurrenceUnit || !isRecurrenceUnit(recurrenceUnit)) {
+            errors.push(`Ligne ${lineNumber}: recurrence_unit invalide.`);
+          }
+        }
+
+        try {
+          taskRows.push({
+            title: row.title.trim(),
+            category: row.category?.trim(),
+            description: row.description?.trim(),
+            taskType,
+            recurrenceValue,
+            recurrenceUnit:
+              recurrenceUnit && isRecurrenceUnit(recurrenceUnit)
+                ? recurrenceUnit
+                : undefined,
+            anchorDate: row.anchor_date ? normalizeDateValue(row.anchor_date) : undefined,
+            fixedDueDate: row.fixed_due_date
+              ? normalizeDateValue(row.fixed_due_date)
+              : undefined,
+            dueSoonDays: row.due_soon_days?.trim()
+              ? Number(row.due_soon_days)
+              : undefined,
+            notes: row.notes?.trim(),
+          });
+        } catch (error) {
+          errors.push(
+            `Ligne ${lineNumber}: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+      }
+    }
+
+    if (hasLogColumns && row.task_title?.trim()) {
+      try {
+        logRows.push({
+          taskTitle: row.task_title.trim(),
+          performedAt: normalizeDateValue(row.performed_at),
+          note: row.note?.trim(),
+        });
+      } catch (error) {
+        errors.push(
+          `Ligne ${lineNumber}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+  });
+
+  if (!hasTaskColumns && !hasLogColumns) {
+    errors.push(
+      "Colonnes non reconnues. Attendu: title,... pour les taches ou task_title,performed_at,note pour les logs."
+    );
+  }
+
+  return { headers, rows: undefined as never, errors, taskRows, logRows };
+}
+
 function formatRelativeStatus(task: MaintenanceTask, logs: MaintenanceLog[]) {
   const schedule = computeTaskScheduleState(task, logs);
 
@@ -95,15 +361,23 @@ function formatRelativeStatus(task: MaintenanceTask, logs: MaintenanceLog[]) {
     return "Pas d'echeance planifiee";
   }
 
+  const relativeDueDate = formatRelativeDueDate(schedule.nextDueAt);
+
   if (schedule.status === "overdue") {
-    return `En retard depuis le ${formatDate(schedule.nextDueAt)}`;
+    return relativeDueDate
+      ? `En retard de ${relativeDueDate} · echeance le ${formatDate(schedule.nextDueAt)}`
+      : `En retard depuis le ${formatDate(schedule.nextDueAt)}`;
   }
 
   if (schedule.status === "due_soon") {
-    return `A faire avant le ${formatDate(schedule.nextDueAt)}`;
+    return relativeDueDate
+      ? `Prochaine echeance dans ${relativeDueDate} · le ${formatDate(schedule.nextDueAt)}`
+      : `A faire avant le ${formatDate(schedule.nextDueAt)}`;
   }
 
-  return `Prochaine echeance le ${formatDate(schedule.nextDueAt)}`;
+  return relativeDueDate
+    ? `Prochaine echeance dans ${relativeDueDate} · le ${formatDate(schedule.nextDueAt)}`
+    : `Prochaine echeance le ${formatDate(schedule.nextDueAt)}`;
 }
 
 function getStatusBadgeClass(status: MaintenanceStatus) {
@@ -173,6 +447,14 @@ export function MaintenancePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmittingTask, setIsSubmittingTask] = useState(false);
   const [isSubmittingLog, setIsSubmittingLog] = useState(false);
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [importFileName, setImportFileName] = useState("");
+  const [isImporting, setIsImporting] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeletingTask, setIsDeletingTask] = useState(false);
+  const [deletingLogId, setDeletingLogId] = useState("");
 
   async function loadData() {
     setIsLoading(true);
@@ -277,6 +559,7 @@ export function MaintenancePage() {
 
       notifySuccess("Tache creee.");
       setTaskForm(DEFAULT_TASK_FORM);
+      setIsCreateDialogOpen(false);
       await loadData();
     } catch (error) {
       notifyError(error instanceof Error ? error.message : String(error));
@@ -316,6 +599,214 @@ export function MaintenancePage() {
     } finally {
       setIsSubmittingLog(false);
     }
+  }
+
+  async function handleImportFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const preview = buildImportPreview(text);
+      setImportPreview(preview);
+      setImportFileName(file.name);
+
+      if (preview.errors.length) {
+        notifyError(`${preview.errors.length} erreur(s) detectee(s) dans le CSV.`);
+      } else {
+        notifySuccess("CSV charge. Verifie l'aperçu puis lance l'import.");
+      }
+    } catch (error) {
+      notifyError(error instanceof Error ? error.message : String(error));
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function handleImportCsv() {
+    if (!importPreview) {
+      return;
+    }
+
+    if (importPreview.errors.length) {
+      notifyError("Corrige les erreurs du CSV avant import.");
+      return;
+    }
+
+    setIsImporting(true);
+
+    try {
+      const result = await importMaintenanceData({
+        tasks: importPreview.taskRows,
+        logs: importPreview.logRows,
+      });
+
+      notifySuccess(
+        `Import termine: ${result.createdTaskCount} tache(s) creee(s), ${result.importedLogCount} log(s) importe(s).`
+      );
+      setImportPreview(null);
+      setImportFileName("");
+      setIsImportDialogOpen(false);
+      await loadData();
+    } catch (error) {
+      notifyError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsImporting(false);
+    }
+  }
+
+  async function handleDeleteTask() {
+    if (!selectedTask) {
+      return;
+    }
+
+    setIsDeletingTask(true);
+
+    try {
+      await deleteMaintenanceTask(selectedTask.id);
+      notifySuccess("Tache supprimee.");
+      setIsDeleteDialogOpen(false);
+      setSelectedTaskId("");
+      await loadData();
+    } catch (error) {
+      notifyError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsDeletingTask(false);
+    }
+  }
+
+  async function handleDeleteLog(logId: string) {
+    if (!selectedTask) {
+      return;
+    }
+
+    setDeletingLogId(logId);
+
+    try {
+      await deleteMaintenanceLog(logId, selectedTask.id);
+      notifySuccess("Execution supprimee.");
+      await loadData();
+    } catch (error) {
+      notifyError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDeletingLogId("");
+    }
+  }
+
+  function handleExportTasksCsv() {
+    const content = buildCsv(IMPORT_TASK_HEADERS, decoratedTasks.map((task) => [
+      task.title,
+      task.category,
+      task.description,
+      task.task_type,
+      task.recurrence_value,
+      task.recurrence_unit,
+      task.anchor_date,
+      task.fixed_due_date,
+      task.due_soon_days,
+      task.notes,
+    ]));
+
+    downloadCsv("maintenance-tasks.csv", content);
+    notifySuccess("Export des taches genere.");
+  }
+
+  function handleExportLogsCsv() {
+    const content = buildCsv(IMPORT_LOG_HEADERS, logs.map((log) => {
+      const task = tasks.find((candidate) => candidate.id === log.task);
+
+      return [
+        task?.title ?? log.task,
+        log.performed_at,
+        log.note,
+      ];
+    }));
+
+    downloadCsv("maintenance-logs.csv", content);
+    notifySuccess("Export des logs genere.");
+  }
+
+  function handleDownloadSampleCsv() {
+    const content = buildCsv(IMPORT_TASK_HEADERS, [
+      [
+        "Changer filtre a eau",
+        "Cuisine",
+        "Remplacer la cartouche du filtre.",
+        "recurring",
+        6,
+        "month",
+        "2026-01-01T09:00:00.000Z",
+        "",
+        14,
+        "Couper l'arrivee d'eau avant intervention.",
+      ],
+      [
+        "Laver les vitres",
+        "Entretien",
+        "Nettoyage interieur et exterieur.",
+        "log_only",
+        "",
+        "",
+        "",
+        "",
+        14,
+        "Pas de periodicite imposee.",
+      ],
+      [
+        "Verifier detecteurs de fumee",
+        "Securite",
+        "Tester les detecteurs et remplacer les piles si necessaire.",
+        "recurring",
+        12,
+        "month",
+        "2026-02-01T10:00:00.000Z",
+        "",
+        30,
+        "Faire un test sonore dans chaque piece.",
+      ],
+      [
+        "Entretien climatisation",
+        "CVC",
+        "Faire intervenir un technicien pour le nettoyage annuel.",
+        "recurring",
+        1,
+        "year",
+        "2026-03-15T08:00:00.000Z",
+        "",
+        21,
+        "Prevoir acces aux unites interieures et exterieures.",
+      ],
+      [
+        "Nettoyage gouttieres",
+        "Exterieur",
+        "Retirer les feuilles et verifier l'ecoulement.",
+        "one_off",
+        "",
+        "",
+        "",
+        "2026-10-05T09:30:00.000Z",
+        10,
+        "Idealement avant les fortes pluies d'automne.",
+      ],
+      [
+        "Controle pression chaudiere",
+        "Chauffage",
+        "Verifier la pression et ajuster si necessaire.",
+        "log_only",
+        "",
+        "",
+        "",
+        "",
+        14,
+        "A consigner a chaque controle manuel.",
+      ],
+    ]);
+
+    downloadCsv("maintenance-example.csv", content);
+    notifySuccess("Exemple CSV telecharge.");
   }
 
   const stats = useMemo(() => {
@@ -383,92 +874,67 @@ export function MaintenancePage() {
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Nouvelle tache</CardTitle>
+            <CardTitle>Creer une tache</CardTitle>
             <CardDescription>
-              Cree une tache recurrente, ponctuelle, ou simplement historisable.
+              Ouvre un formulaire dedie pour creer une tache recurrente,
+              ponctuelle, ou simplement historisable.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <form className="space-y-4" onSubmit={handleCreateTask}>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-medium" htmlFor="task-title">
-                    Titre
-                  </label>
-                  <Input
-                    id="task-title"
-                    value={taskForm.title}
-                    onChange={(event) =>
-                      setTaskForm((current) => ({ ...current, title: event.target.value }))
-                    }
-                    placeholder="Changer filtre a eau"
-                  />
-                </div>
+          <CardContent className="flex items-start">
+            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+              <DialogTrigger asChild>
+                <Button type="button">
+                  <Plus className="size-4" />
+                  Nouvelle tache
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Nouvelle tache</DialogTitle>
+                  <DialogDescription>
+                    Cree une tache recurrente, ponctuelle, ou simplement
+                    historisable.
+                  </DialogDescription>
+                </DialogHeader>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium" htmlFor="task-category">
-                    Categorie
-                  </label>
-                  <Input
-                    id="task-category"
-                    value={taskForm.category}
-                    onChange={(event) =>
-                      setTaskForm((current) => ({ ...current, category: event.target.value }))
-                    }
-                    placeholder="Cuisine"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Type de tache</label>
-                  <Select
-                    value={taskForm.taskType}
-                    onValueChange={(value) =>
-                      setTaskForm((current) => ({
-                        ...current,
-                        taskType: value as MaintenanceTaskType,
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="recurring">Recurrente</SelectItem>
-                      <SelectItem value="one_off">Ponctuelle</SelectItem>
-                      <SelectItem value="log_only">Historique libre</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {taskForm.taskType === "recurring" ? (
-                  <>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium" htmlFor="task-recurrence-value">
-                        Frequence
+                <form className="space-y-4" onSubmit={handleCreateTask}>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-sm font-medium" htmlFor="task-title">
+                        Titre
                       </label>
                       <Input
-                        id="task-recurrence-value"
-                        type="number"
-                        min="1"
-                        value={taskForm.recurrenceValue}
+                        id="task-title"
+                        value={taskForm.title}
                         onChange={(event) =>
-                          setTaskForm((current) => ({
-                            ...current,
-                            recurrenceValue: event.target.value,
-                          }))
+                          setTaskForm((current) => ({ ...current, title: event.target.value }))
                         }
+                        placeholder="Changer filtre a eau"
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Unite</label>
+                      <label className="text-sm font-medium" htmlFor="task-category">
+                        Categorie
+                      </label>
+                      <Input
+                        id="task-category"
+                        value={taskForm.category}
+                        onChange={(event) =>
+                          setTaskForm((current) => ({ ...current, category: event.target.value }))
+                        }
+                        placeholder="Cuisine"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Type de tache</label>
                       <Select
-                        value={taskForm.recurrenceUnit}
+                        value={taskForm.taskType}
                         onValueChange={(value) =>
                           setTaskForm((current) => ({
                             ...current,
-                            recurrenceUnit: value as RecurrenceUnit,
+                            taskType: value as MaintenanceTaskType,
                           }))
                         }
                       >
@@ -476,112 +942,154 @@ export function MaintenancePage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="day">Jour</SelectItem>
-                          <SelectItem value="week">Semaine</SelectItem>
-                          <SelectItem value="month">Mois</SelectItem>
-                          <SelectItem value="year">Annee</SelectItem>
+                          <SelectItem value="recurring">Recurrente</SelectItem>
+                          <SelectItem value="one_off">Ponctuelle</SelectItem>
+                          <SelectItem value="log_only">Historique libre</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
 
-                    <div className="space-y-2 md:col-span-2">
-                      <label className="text-sm font-medium" htmlFor="task-anchor-date">
-                        Date de reference
+                    {taskForm.taskType === "recurring" ? (
+                      <>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium" htmlFor="task-recurrence-value">
+                            Frequence
+                          </label>
+                          <Input
+                            id="task-recurrence-value"
+                            type="number"
+                            min="1"
+                            value={taskForm.recurrenceValue}
+                            onChange={(event) =>
+                              setTaskForm((current) => ({
+                                ...current,
+                                recurrenceValue: event.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Unite</label>
+                          <Select
+                            value={taskForm.recurrenceUnit}
+                            onValueChange={(value) =>
+                              setTaskForm((current) => ({
+                                ...current,
+                                recurrenceUnit: value as RecurrenceUnit,
+                              }))
+                            }
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="day">Jour</SelectItem>
+                              <SelectItem value="week">Semaine</SelectItem>
+                              <SelectItem value="month">Mois</SelectItem>
+                              <SelectItem value="year">Annee</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2 md:col-span-2">
+                          <label className="text-sm font-medium" htmlFor="task-anchor-date">
+                            Date de reference
+                          </label>
+                          <DatePicker
+                            value={taskForm.anchorDate}
+                            onChange={(value) =>
+                              setTaskForm((current) => ({
+                                ...current,
+                                anchorDate: value,
+                              }))
+                            }
+                            placeholder="Choisir une date de reference"
+                          />
+                        </div>
+                      </>
+                    ) : null}
+
+                    {taskForm.taskType === "one_off" ? (
+                      <div className="space-y-2 md:col-span-2">
+                        <label className="text-sm font-medium" htmlFor="task-fixed-due-date">
+                          Echeance unique
+                        </label>
+                        <DatePicker
+                          value={taskForm.fixedDueDate}
+                          onChange={(value) =>
+                            setTaskForm((current) => ({
+                              ...current,
+                              fixedDueDate: value,
+                            }))
+                          }
+                          placeholder="Choisir une echeance"
+                        />
+                      </div>
+                    ) : null}
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium" htmlFor="task-due-soon-days">
+                        Alerte avant echeance
                       </label>
                       <Input
-                        id="task-anchor-date"
-                        type="datetime-local"
-                        value={taskForm.anchorDate}
+                        id="task-due-soon-days"
+                        type="number"
+                        min="1"
+                        value={taskForm.dueSoonDays}
                         onChange={(event) =>
                           setTaskForm((current) => ({
                             ...current,
-                            anchorDate: event.target.value,
+                            dueSoonDays: event.target.value,
                           }))
                         }
                       />
                     </div>
-                  </>
-                ) : null}
 
-                {taskForm.taskType === "one_off" ? (
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium" htmlFor="task-fixed-due-date">
-                      Echeance unique
-                    </label>
-                    <Input
-                      id="task-fixed-due-date"
-                      type="datetime-local"
-                      value={taskForm.fixedDueDate}
-                      onChange={(event) =>
-                        setTaskForm((current) => ({
-                          ...current,
-                          fixedDueDate: event.target.value,
-                        }))
-                      }
-                    />
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-sm font-medium" htmlFor="task-description">
+                        Description
+                      </label>
+                      <Textarea
+                        id="task-description"
+                        value={taskForm.description}
+                        onChange={(event) =>
+                          setTaskForm((current) => ({
+                            ...current,
+                            description: event.target.value,
+                          }))
+                        }
+                        placeholder="Details utiles pour l'execution."
+                      />
+                    </div>
+
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-sm font-medium" htmlFor="task-notes">
+                        Notes internes
+                      </label>
+                      <Textarea
+                        id="task-notes"
+                        value={taskForm.notes}
+                        onChange={(event) =>
+                          setTaskForm((current) => ({
+                            ...current,
+                            notes: event.target.value,
+                          }))
+                        }
+                        placeholder="Procedure, references, materiel..."
+                      />
+                    </div>
                   </div>
-                ) : null}
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium" htmlFor="task-due-soon-days">
-                    Alerte avant echeance
-                  </label>
-                  <Input
-                    id="task-due-soon-days"
-                    type="number"
-                    min="1"
-                    value={taskForm.dueSoonDays}
-                    onChange={(event) =>
-                      setTaskForm((current) => ({
-                        ...current,
-                        dueSoonDays: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-medium" htmlFor="task-description">
-                    Description
-                  </label>
-                  <Textarea
-                    id="task-description"
-                    value={taskForm.description}
-                    onChange={(event) =>
-                      setTaskForm((current) => ({
-                        ...current,
-                        description: event.target.value,
-                      }))
-                    }
-                    placeholder="Details utiles pour l'execution."
-                  />
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-medium" htmlFor="task-notes">
-                    Notes internes
-                  </label>
-                  <Textarea
-                    id="task-notes"
-                    value={taskForm.notes}
-                    onChange={(event) =>
-                      setTaskForm((current) => ({
-                        ...current,
-                        notes: event.target.value,
-                      }))
-                    }
-                    placeholder="Procedure, references, materiel..."
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <Button type="submit" disabled={isSubmittingTask}>
-                  <Plus className="size-4" />
-                  {isSubmittingTask ? "Creation..." : "Creer la tache"}
-                </Button>
-              </div>
-            </form>
+                  <div className="flex justify-end">
+                    <Button type="submit" disabled={isSubmittingTask}>
+                      <Plus className="size-4" />
+                      {isSubmittingTask ? "Creation..." : "Creer la tache"}
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
           </CardContent>
         </Card>
 
@@ -624,6 +1132,207 @@ export function MaintenancePage() {
                 les interventions occasionnelles comme le lavage des vitres.
               </p>
             </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section>
+        <Card>
+          <CardHeader>
+            <CardTitle>Import et export CSV</CardTitle>
+            <CardDescription>
+              Importe des taches et des logs depuis un CSV, ou exporte les donnees
+              actuelles.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-3">
+            <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+              <DialogTrigger asChild>
+                <Button type="button">
+                  <Upload className="size-4" />
+                  Importer un CSV
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-h-[85vh] max-w-5xl overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Import CSV maintenance</DialogTitle>
+                  <DialogDescription>
+                    Importe des taches, des logs, ou les deux. Les taches deja
+                    presentes sont ignorees sur la base du titre.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
+                  <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                        <FileSpreadsheet className="size-4" />
+                        Format taches
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-white p-3">
+                        <code className="block whitespace-pre-wrap break-words text-xs leading-5 text-slate-600">
+                          {IMPORT_TASK_HEADERS.join(",\n")}
+                        </code>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-slate-900">Format logs</div>
+                      <div className="rounded-xl border border-slate-200 bg-white p-3">
+                        <code className="block whitespace-pre-wrap break-words text-xs leading-5 text-slate-600">
+                          {IMPORT_LOG_HEADERS.join(",\n")}
+                        </code>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium" htmlFor="maintenance-csv">
+                        Fichier CSV
+                      </label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full justify-start"
+                        onClick={handleDownloadSampleCsv}
+                      >
+                        <Download className="size-4" />
+                        Telecharger un exemple de CSV
+                      </Button>
+                      <Input
+                        id="maintenance-csv"
+                        type="file"
+                        accept=".csv,text/csv"
+                        onChange={handleImportFileChange}
+                      />
+                      {importFileName ? (
+                        <p className="text-xs text-slate-500">{importFileName}</p>
+                      ) : null}
+                    </div>
+
+                    <Button
+                      type="button"
+                      onClick={handleImportCsv}
+                      disabled={!importPreview || isImporting || importPreview.errors.length > 0}
+                    >
+                      <Upload className="size-4" />
+                      {isImporting ? "Import en cours..." : "Importer le CSV"}
+                    </Button>
+                  </div>
+
+                  <div className="space-y-4">
+                    {importPreview ? (
+                      <>
+                        <div className="grid gap-4 md:grid-cols-3">
+                          <div className="rounded-2xl border p-4">
+                            <div className="text-xs uppercase tracking-wide text-slate-500">
+                              Taches detectees
+                            </div>
+                            <div className="mt-2 text-2xl font-semibold">
+                              {importPreview.taskRows.length}
+                            </div>
+                          </div>
+                          <div className="rounded-2xl border p-4">
+                            <div className="text-xs uppercase tracking-wide text-slate-500">
+                              Logs detectes
+                            </div>
+                            <div className="mt-2 text-2xl font-semibold">
+                              {importPreview.logRows.length}
+                            </div>
+                          </div>
+                          <div className="rounded-2xl border p-4">
+                            <div className="text-xs uppercase tracking-wide text-slate-500">
+                              Erreurs
+                            </div>
+                            <div className="mt-2 text-2xl font-semibold">
+                              {importPreview.errors.length}
+                            </div>
+                          </div>
+                        </div>
+
+                        {importPreview.errors.length ? (
+                          <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                            <div className="mb-2 text-sm font-medium text-red-700">
+                              Erreurs de validation
+                            </div>
+                            <div className="space-y-1 text-sm text-red-700">
+                              {importPreview.errors.map((error) => (
+                                <div key={error}>{error}</div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="rounded-2xl border p-4">
+                            <div className="mb-3 text-sm font-medium text-slate-900">
+                              Apercu taches
+                            </div>
+                            <div className="space-y-2 text-sm text-slate-600">
+                              {importPreview.taskRows.slice(0, 5).map((task, index) => (
+                                <div
+                                  key={`${task.title}-${index}`}
+                                  className="rounded-xl bg-slate-50 p-3"
+                                >
+                                  <div className="font-medium text-slate-900">{task.title}</div>
+                                  <div>
+                                    {task.taskType}
+                                    {task.taskType === "recurring"
+                                      ? ` · ${task.recurrenceValue} ${task.recurrenceUnit}`
+                                      : ""}
+                                  </div>
+                                </div>
+                              ))}
+                              {!importPreview.taskRows.length ? (
+                                <div className="text-muted-foreground">
+                                  Aucune tache detectee.
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="rounded-2xl border p-4">
+                            <div className="mb-3 text-sm font-medium text-slate-900">
+                              Apercu logs
+                            </div>
+                            <div className="space-y-2 text-sm text-slate-600">
+                              {importPreview.logRows.slice(0, 5).map((log, index) => (
+                                <div
+                                  key={`${log.taskTitle}-${log.performedAt}-${index}`}
+                                  className="rounded-xl bg-slate-50 p-3"
+                                >
+                                  <div className="font-medium text-slate-900">
+                                    {log.taskTitle}
+                                  </div>
+                                  <div>{formatDate(log.performedAt)}</div>
+                                </div>
+                              ))}
+                              {!importPreview.logRows.length ? (
+                                <div className="text-muted-foreground">
+                                  Aucun log detecte.
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="rounded-2xl border border-dashed p-6 text-sm text-muted-foreground">
+                        Charge un CSV pour obtenir un apercu avant import.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            <Button type="button" variant="outline" onClick={handleExportTasksCsv}>
+              <Download className="size-4" />
+              Export taches
+            </Button>
+            <Button type="button" variant="outline" onClick={handleExportLogsCsv}>
+              <Download className="size-4" />
+              Export logs
+            </Button>
           </CardContent>
         </Card>
       </section>
@@ -744,6 +1453,58 @@ export function MaintenancePage() {
                     </span>
                   </div>
 
+                  <div className="mt-4 flex justify-end">
+                    <Dialog
+                      open={isDeleteDialogOpen}
+                      onOpenChange={setIsDeleteDialogOpen}
+                    >
+                      <DialogTrigger asChild>
+                        <Button type="button" variant="outline">
+                          <Trash2 className="size-4" />
+                          Supprimer la tache
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Supprimer cette tache ?</DialogTitle>
+                          <DialogDescription>
+                            Cette action supprimera aussi l'historique associe via
+                            la relation en cascade. Elle est irreversible.
+                          </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                          <span className="font-medium text-slate-950">
+                            {selectedTask.title}
+                          </span>
+                          <div className="mt-1">
+                            {selectedLogs.length} execution(s) enregistree(s)
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setIsDeleteDialogOpen(false)}
+                            disabled={isDeletingTask}
+                          >
+                            Annuler
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={handleDeleteTask}
+                            disabled={isDeletingTask}
+                          >
+                            <Trash2 className="size-4" />
+                            {isDeletingTask ? "Suppression..." : "Confirmer"}
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
                     <div className="rounded-xl border border-white bg-white p-3">
                       <div className="text-xs uppercase tracking-wide text-slate-500">
@@ -762,6 +1523,14 @@ export function MaintenancePage() {
                         Prochaine echeance
                       </div>
                       <div className="mt-1 text-sm text-slate-800">
+                        {selectedTask.derivedStatus === "overdue" &&
+                        formatRelativeDueDate(selectedTask.derivedNextDueAt)
+                          ? `En retard de ${formatRelativeDueDate(selectedTask.derivedNextDueAt)}`
+                          : formatRelativeDueDate(selectedTask.derivedNextDueAt)
+                            ? `Dans ${formatRelativeDueDate(selectedTask.derivedNextDueAt)}`
+                            : formatDate(selectedTask.derivedNextDueAt)}
+                      </div>
+                      <div className="mt-1 text-xs text-slate-500">
                         {formatDate(selectedTask.derivedNextDueAt)}
                       </div>
                     </div>
@@ -797,16 +1566,15 @@ export function MaintenancePage() {
                       <label className="text-sm font-medium" htmlFor="log-performed-at">
                         Date d'execution
                       </label>
-                      <Input
-                        id="log-performed-at"
-                        type="datetime-local"
+                      <DateTimePicker
                         value={logForm.performedAt}
-                        onChange={(event) =>
+                        onChange={(value) =>
                           setLogForm((current) => ({
                             ...current,
-                            performedAt: event.target.value,
+                            performedAt: value,
                           }))
                         }
+                        placeholder="Choisir une date"
                       />
                     </div>
                     <div className="flex items-end">
@@ -852,8 +1620,21 @@ export function MaintenancePage() {
                               {log.note || "Aucune note"}
                             </div>
                           </div>
-                          <div className="text-xs text-slate-500">
-                            {log.performed_by || "Execution manuelle"}
+                          <div className="flex items-start gap-2">
+                            <div className="pt-2 text-xs text-slate-500">
+                              {log.performed_by || "Execution manuelle"}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-slate-500 hover:text-destructive"
+                              onClick={() => handleDeleteLog(log.id)}
+                              disabled={deletingLogId === log.id}
+                            >
+                              <Trash2 className="size-4" />
+                              <span className="sr-only">Supprimer cette execution</span>
+                            </Button>
                           </div>
                         </div>
                       </div>
