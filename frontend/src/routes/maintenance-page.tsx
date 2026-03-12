@@ -17,6 +17,7 @@ import {
 import { DatePicker } from "@/components/ui/date-picker";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -1415,7 +1416,7 @@ export function MaintenancePage() {
         </Card>
 
         <div className="min-w-0 self-start xl:sticky xl:top-24">
-          <Card className="min-h-[32rem] xl:max-h-[calc(100vh-7rem)] xl:overflow-hidden">
+          <Card className="min-h-[32rem] xl:h-[calc(100vh-7rem)] xl:overflow-hidden">
           <CardHeader>
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1">
@@ -1478,7 +1479,7 @@ export function MaintenancePage() {
               ) : null}
             </div>
           </CardHeader>
-          <CardContent className="min-w-0 space-y-6 xl:overflow-y-auto">
+          <CardContent className="flex min-h-0 min-w-0 flex-1 flex-col space-y-6">
             {selectedTask ? (
               <>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
@@ -1599,47 +1600,51 @@ export function MaintenancePage() {
                   </div>
                 </form>
 
-                <div className="space-y-3">
+                <div className="flex min-h-0 flex-1 flex-col space-y-3">
                   <div className="text-sm font-medium text-slate-900">Historique</div>
-                  {selectedLogs.length ? (
-                    selectedLogs.map((log) => (
-                      <div
-                        key={log.id}
-                        className="rounded-2xl border border-slate-200 p-4"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="font-medium text-slate-900">
-                              {formatDate(log.performed_at)}
-                            </div>
-                            <div className="text-sm text-slate-600">
-                              {log.note || "Aucune note"}
+                  <ScrollArea className="min-h-0 flex-1 xl:pr-3">
+                    <div className="space-y-3">
+                      {selectedLogs.length ? (
+                        selectedLogs.map((log) => (
+                          <div
+                            key={log.id}
+                            className="rounded-2xl border border-slate-200 p-4"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="font-medium text-slate-900">
+                                  {formatDate(log.performed_at)}
+                                </div>
+                                <div className="text-sm text-slate-600">
+                                  {log.note || "Aucune note"}
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-2">
+                                <div className="pt-2 text-xs text-slate-500">
+                                  {log.performed_by || "Execution manuelle"}
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="text-slate-500 hover:text-destructive"
+                                  onClick={() => handleDeleteLog(log.id)}
+                                  disabled={deletingLogId === log.id}
+                                >
+                                  <Trash2 className="size-4" />
+                                  <span className="sr-only">Supprimer cette execution</span>
+                                </Button>
+                              </div>
                             </div>
                           </div>
-                          <div className="flex items-start gap-2">
-                            <div className="pt-2 text-xs text-slate-500">
-                              {log.performed_by || "Execution manuelle"}
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              className="text-slate-500 hover:text-destructive"
-                              onClick={() => handleDeleteLog(log.id)}
-                              disabled={deletingLogId === log.id}
-                            >
-                              <Trash2 className="size-4" />
-                              <span className="sr-only">Supprimer cette execution</span>
-                            </Button>
-                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-2xl border border-dashed p-6 text-sm text-muted-foreground">
+                          Aucun historique pour cette tache.
                         </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="rounded-2xl border border-dashed p-6 text-sm text-muted-foreground">
-                      Aucun historique pour cette tache.
+                      )}
                     </div>
-                  )}
+                  </ScrollArea>
                 </div>
               </>
             ) : (
