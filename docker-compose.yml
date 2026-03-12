@@ -9,6 +9,7 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: 3000
+      PUBLIC_POCKETBASE_URL: ${PUBLIC_POCKETBASE_URL:-}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     healthcheck:
