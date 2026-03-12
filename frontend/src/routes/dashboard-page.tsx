@@ -1,5 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PocketBasePanel } from "@/PocketBasePanel";
+import { Button } from "@/components/ui/button";
+import { Link } from "react-router";
 
 export function DashboardPage() {
   return (
@@ -16,6 +18,11 @@ export function DashboardPage() {
             Use this layout as the parent for the rest of your authenticated application. Nested routes will inherit the
             same guard and the same session state from the shared PocketBase client.
           </p>
+          <div className="mt-4">
+            <Button asChild>
+              <Link to="/maintenance">Open maintenance service</Link>
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

@@ -12,6 +12,8 @@ export const pb =
   globalThis.__pocketbase__ ??
   (new PocketBase(pocketbaseUrl) as TypedPocketBase);
 
+pb.autoCancellation(false);
+
 if (!globalThis.__pocketbase__) {
   globalThis.__pocketbase__ = pb;
 }
