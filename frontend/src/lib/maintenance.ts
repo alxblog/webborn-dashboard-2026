@@ -37,6 +37,7 @@ type CreateLogInput = {
 };
 
 export type BulkImportTaskInput = CreateTaskInput;
+export type UpdateTaskInput = CreateTaskInput;
 export type BulkImportLogInput = {
   taskTitle: string;
   performedAt: string;
@@ -258,6 +259,12 @@ export async function createMaintenanceTask(input: CreateTaskInput) {
 
   await syncMaintenanceTask(createdTask.id);
   return pb.collection("maintenance_tasks").getOne(createdTask.id);
+}
+
+export async function updateMaintenanceTask(taskId: string, input: UpdateTaskInput) {
+  await pb.collection("maintenance_tasks").update(taskId, normalizeTaskPayload(input));
+  await syncMaintenanceTask(taskId);
+  return pb.collection("maintenance_tasks").getOne(taskId);
 }
 
 export async function createMaintenanceLog(input: CreateLogInput) {

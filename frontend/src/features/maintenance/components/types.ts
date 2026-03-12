@@ -11,6 +11,16 @@ export type MaintenanceCreateTaskDialogProps = {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 };
 
+export type MaintenanceEditTaskDialogProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  taskForm: TaskFormState;
+  setTaskForm: Dispatch<SetStateAction<TaskFormState>>;
+  isSubmitting: boolean;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  disabled?: boolean;
+};
+
 export type MaintenanceImportDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;

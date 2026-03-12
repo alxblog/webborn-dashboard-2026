@@ -26,24 +26,60 @@ import { Link, useLocation, useNavigate } from "react-router"
 import type { ClientResponseError } from "pocketbase"
 
 type AuthMethodsList = {
-  mfa: {
+  mfa?: {
     enabled: boolean
     duration: number
   }
-  otp: {
+  otp?: {
     enabled: boolean
     duration: number
   }
-  password: {
+  password?: {
     enabled: boolean
     identityFields: string[]
   }
-  oauth2: {
+  oauth2?: {
     enabled: boolean
     providers: Array<{
       name: string
       displayName?: string
     }>
+  }
+  authProviders?: Array<{
+    name: string
+    displayName?: string
+  }>
+  usernamePassword?: boolean
+  emailPassword?: boolean
+}
+
+function normalizeAuthMethods(input: AuthMethodsList) {
+  const identityFields =
+    input.password?.identityFields?.length
+      ? input.password.identityFields
+      : [
+          ...(input.emailPassword ? ["email"] : []),
+          ...(input.usernamePassword ? ["username"] : []),
+        ]
+
+  const passwordEnabled =
+    input.password?.enabled ??
+    Boolean(input.emailPassword || input.usernamePassword)
+
+  const oauthProviders = input.oauth2?.providers ?? input.authProviders ?? []
+  const oauthEnabled = input.oauth2?.enabled ?? oauthProviders.length > 0
+  const otpEnabled = input.otp?.enabled ?? false
+  const otpDuration = input.otp?.duration ?? 0
+  const mfaEnabled = input.mfa?.enabled ?? false
+
+  return {
+    passwordEnabled,
+    identityFields,
+    oauthProviders,
+    oauthEnabled,
+    otpEnabled,
+    otpDuration,
+    mfaEnabled,
   }
 }
 
@@ -221,19 +257,29 @@ export function LoginForm({
     }
   }
 
-  const passwordEnabled = methods?.password.enabled ?? true
-  const oauthProviders = methods?.oauth2.providers ?? []
-  const identityLabel = methods?.password.identityFields.length
-    ? methods.password.identityFields.join(" / ")
+  const normalizedMethods = methods ? normalizeAuthMethods(methods) : null
+  const passwordEnabled = normalizedMethods?.passwordEnabled ?? true
+  const oauthProviders = normalizedMethods?.oauthProviders ?? []
+  const identityFields = normalizedMethods?.identityFields ?? []
+  const identityLabel = identityFields.length
+    ? identityFields.join(" / ")
     : "email ou nom d'utilisateur"
-  const showOauth = Boolean(methods?.oauth2.enabled && oauthProviders.length)
-  const showOtp = Boolean(methods?.otp.enabled)
+  const showOauth = Boolean(normalizedMethods?.oauthEnabled && oauthProviders.length)
+  const showOtp = Boolean(normalizedMethods?.otpEnabled)
+  const hasDetectedMethods =
+    passwordEnabled ||
+    showOtp ||
+    showOauth ||
+    Boolean(normalizedMethods?.mfaEnabled)
   const activeMethodCount =
     (passwordEnabled ? 1 : 0) +
     (showOtp ? 1 : 0) +
     (showOauth ? 1 : 0)
   const hasSingleMethod = activeMethodCount === 1
-  const showPasswordSection = passwordEnabled && (hasSingleMethod || selectedMethod === "password")
+  const showFallbackPassword = !isLoadingMethods && !hasDetectedMethods
+  const showPasswordSection =
+    (passwordEnabled || showFallbackPassword) &&
+    (showFallbackPassword || hasSingleMethod || selectedMethod === "password")
   const showOtpSection = showOtp && (hasSingleMethod || selectedMethod === "otp")
   const showMethodSwitcher = !hasSingleMethod && passwordEnabled && showOtp
 
@@ -373,7 +419,7 @@ export function LoginForm({
                           Envoyer un code par email
                         </Button>
                         <FieldDescription>
-                          {otpMessage || `Validite du code de connexion : environ ${Math.ceil((methods?.otp.duration || 0) / 60)} min.`}
+                          {otpMessage || `Validite du code de connexion : environ ${Math.ceil((normalizedMethods?.otpDuration || 0) / 60)} min.`}
                         </FieldDescription>
                       </>
                     ) : (
@@ -422,7 +468,7 @@ export function LoginForm({
                         >
                           Se connecter avec le code
                         </Button>
-                        {methods?.mfa.enabled ? (
+                        {normalizedMethods?.mfaEnabled ? (
                           <FieldDescription>
                             L'authentification multifacteur est active sur cette collection. Une verification supplementaire peut etre demandee.
                           </FieldDescription>
@@ -431,7 +477,7 @@ export function LoginForm({
                     </>
                   ) : null}
                 </>
-              ) : methods?.mfa.enabled ? (
+              ) : normalizedMethods?.mfaEnabled ? (
                 <FieldDescription className="text-center">
                   L'authentification multifacteur est active pour cette collection et s'applique aux methodes de connexion principales configurees.
                 </FieldDescription>

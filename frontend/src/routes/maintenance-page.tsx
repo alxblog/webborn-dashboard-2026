@@ -32,6 +32,7 @@ import {
   listMaintenanceTasks,
   type MaintenanceLog,
   type MaintenanceTask,
+  updateMaintenanceTask,
 } from "@/lib/maintenance";
 import { notifyError, notifySuccess } from "@/lib/notifications";
 
@@ -84,12 +85,28 @@ function buildStats(tasks: DecoratedMaintenanceTask[]): MaintenanceStats {
   };
 }
 
+function toTaskFormState(task: MaintenanceTask) {
+  return {
+    title: task.title ?? "",
+    category: task.category ?? "",
+    description: task.description ?? "",
+    taskType: task.task_type,
+    recurrenceValue: task.recurrence_value ? String(task.recurrence_value) : "",
+    recurrenceUnit: task.recurrence_unit ?? "month",
+    anchorDate: task.anchor_date ?? "",
+    fixedDueDate: task.fixed_due_date ?? "",
+    dueSoonDays: String(task.due_soon_days ?? 14),
+    notes: task.notes ?? "",
+  };
+}
+
 export function MaintenancePage() {
   const [tasks, setTasks] = useState<MaintenanceTask[]>([]);
   const [logs, setLogs] = useState<MaintenanceLog[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("all");
   const [taskForm, setTaskForm] = useState(DEFAULT_TASK_FORM);
+  const [editTaskForm, setEditTaskForm] = useState(DEFAULT_TASK_FORM);
   const [logForm, setLogForm] = useState<LogFormState>({
     performedAt: getTodayLocalIso(),
     note: "",
@@ -102,6 +119,7 @@ export function MaintenancePage() {
   const [isImporting, setIsImporting] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeletingTask, setIsDeletingTask] = useState(false);
   const [deletingLogId, setDeletingLogId] = useState("");
@@ -178,6 +196,49 @@ export function MaintenancePage() {
       notifySuccess("Tache creee.");
       setTaskForm(DEFAULT_TASK_FORM);
       setIsCreateDialogOpen(false);
+      await loadData();
+    } catch (error) {
+      notifyError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsSubmittingTask(false);
+    }
+  }
+
+  async function handleUpdateTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!selectedTask) {
+      return;
+    }
+
+    setIsSubmittingTask(true);
+
+    try {
+      if (!editTaskForm.title.trim()) {
+        throw new Error("Le titre est requis.");
+      }
+
+      await updateMaintenanceTask(selectedTask.id, {
+        title: editTaskForm.title,
+        description: editTaskForm.description,
+        category: editTaskForm.category,
+        taskType: editTaskForm.taskType,
+        recurrenceUnit:
+          editTaskForm.taskType === "recurring"
+            ? editTaskForm.recurrenceUnit
+            : undefined,
+        recurrenceValue:
+          editTaskForm.taskType === "recurring"
+            ? Number(editTaskForm.recurrenceValue || "0")
+            : undefined,
+        anchorDate: editTaskForm.anchorDate,
+        fixedDueDate: editTaskForm.fixedDueDate,
+        dueSoonDays: Number(editTaskForm.dueSoonDays || "14"),
+        notes: editTaskForm.notes,
+      });
+
+      notifySuccess("Tache modifiee.");
+      setIsEditDialogOpen(false);
       await loadData();
     } catch (error) {
       notifyError(error instanceof Error ? error.message : String(error));
@@ -420,6 +481,21 @@ export function MaintenancePage() {
           onDeleteTask={handleDeleteTask}
           deletingLogId={deletingLogId}
           onDeleteLog={handleDeleteLog}
+          editDialog={{
+            open: isEditDialogOpen,
+            onOpenChange: (open) => {
+              setIsEditDialogOpen(open);
+
+              if (open && selectedTask) {
+                setEditTaskForm(toTaskFormState(selectedTask));
+              }
+            },
+            taskForm: editTaskForm,
+            setTaskForm: setEditTaskForm,
+            isSubmitting: isSubmittingTask,
+            onSubmit: handleUpdateTask,
+            disabled: !selectedTask,
+          }}
         />
       </section>
     </div>

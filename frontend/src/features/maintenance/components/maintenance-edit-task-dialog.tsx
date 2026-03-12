@@ -1,6 +1,6 @@
 import type { Dispatch, FormEvent, SetStateAction } from "react";
 
-import { Plus } from "lucide-react";
+import { Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -9,7 +9,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 
 import type { TaskFormState } from "../types";
@@ -22,29 +21,33 @@ type Props = {
   setTaskForm: Dispatch<SetStateAction<TaskFormState>>;
   isSubmitting: boolean;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  disabled?: boolean;
+  hideTrigger?: boolean;
 };
 
-export function MaintenanceCreateTaskDialog({
+export function MaintenanceEditTaskDialog({
   open,
   onOpenChange,
   taskForm,
   setTaskForm,
   isSubmitting,
   onSubmit,
+  disabled = false,
+  hideTrigger = false,
 }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger asChild>
-        <Button type="button">
-          <Plus className="size-4" />
-          Nouvelle tache
+      {hideTrigger ? null : (
+        <Button type="button" variant="outline" disabled={disabled} onClick={() => onOpenChange(true)}>
+          <Pencil className="size-4" />
+          Modifier
         </Button>
-      </DialogTrigger>
+      )}
       <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Nouvelle tache</DialogTitle>
+          <DialogTitle>Modifier la tache</DialogTitle>
           <DialogDescription>
-            Cree une tache recurrente, ponctuelle, ou simplement historisable.
+            Mets a jour le titre, le planning et les notes de cette tache.
           </DialogDescription>
         </DialogHeader>
 
@@ -53,8 +56,8 @@ export function MaintenanceCreateTaskDialog({
 
           <div className="flex justify-end">
             <Button type="submit" disabled={isSubmitting}>
-              <Plus className="size-4" />
-              {isSubmitting ? "Creation..." : "Creer la tache"}
+              <Pencil className="size-4" />
+              {isSubmitting ? "Enregistrement..." : "Enregistrer les modifications"}
             </Button>
           </div>
         </form>

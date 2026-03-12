@@ -1,6 +1,6 @@
 import type { Dispatch, FormEvent, SetStateAction } from "react";
 
-import { CheckCircle2, Trash2 } from "lucide-react";
+import { CheckCircle2, Ellipsis, Pencil, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,8 +11,13 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -25,6 +30,8 @@ import {
   getStatusLabel,
 } from "../formatters";
 import type { DecoratedMaintenanceTask, LogFormState } from "../types";
+import type { MaintenanceEditTaskDialogProps } from "./types";
+import { MaintenanceEditTaskDialog } from "./maintenance-edit-task-dialog";
 
 type Props = {
   selectedTask: DecoratedMaintenanceTask | null;
@@ -39,6 +46,7 @@ type Props = {
   onDeleteTask: () => void;
   deletingLogId: string;
   onDeleteLog: (logId: string) => void;
+  editDialog: MaintenanceEditTaskDialogProps;
 };
 
 export function MaintenanceDetailCard({
@@ -54,6 +62,7 @@ export function MaintenanceDetailCard({
   onDeleteTask,
   deletingLogId,
   onDeleteLog,
+  editDialog,
 }: Props) {
   return (
     <div className="min-w-0 self-start xl:sticky xl:top-24">
@@ -68,48 +77,66 @@ export function MaintenanceDetailCard({
             </div>
 
             {selectedTask ? (
-              <Dialog open={isDeleteDialogOpen} onOpenChange={onDeleteDialogChange}>
-                <DialogTrigger asChild>
-                  <Button type="button" variant="outline">
-                    <Trash2 className="size-4" />
-                    Supprimer la tache
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Supprimer cette tache ?</DialogTitle>
-                    <DialogDescription>
-                      Cette action supprimera aussi l'historique associe via la
-                      relation en cascade. Elle est irreversible.
-                    </DialogDescription>
-                  </DialogHeader>
-
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                    <span className="font-medium text-slate-950">{selectedTask.title}</span>
-                    <div className="mt-1">{selectedLogs.length} execution(s) enregistree(s)</div>
-                  </div>
-
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => onDeleteDialogChange(false)}
-                      disabled={isDeletingTask}
-                    >
-                      Annuler
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <MaintenanceEditTaskDialog {...editDialog} hideTrigger />
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" variant="outline" size="icon-sm">
+                      <Ellipsis className="size-4" />
+                      <span className="sr-only">Actions de la tache</span>
                     </Button>
-                    <Button
-                      type="button"
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => editDialog.onOpenChange(true)}>
+                      <Pencil className="size-4" />
+                      Modifier
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
                       variant="destructive"
-                      onClick={onDeleteTask}
-                      disabled={isDeletingTask}
+                      onSelect={() => onDeleteDialogChange(true)}
                     >
                       <Trash2 className="size-4" />
-                      {isDeletingTask ? "Suppression..." : "Confirmer"}
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
+                      Supprimer
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Dialog open={isDeleteDialogOpen} onOpenChange={onDeleteDialogChange}>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Supprimer cette tache ?</DialogTitle>
+                      <DialogDescription>
+                        Cette action supprimera aussi l'historique associe via la
+                        relation en cascade. Elle est irreversible.
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                      <span className="font-medium text-slate-950">{selectedTask.title}</span>
+                      <div className="mt-1">{selectedLogs.length} execution(s) enregistree(s)</div>
+                    </div>
+
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => onDeleteDialogChange(false)}
+                        disabled={isDeletingTask}
+                      >
+                        Annuler
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        onClick={onDeleteTask}
+                        disabled={isDeletingTask}
+                      >
+                        <Trash2 className="size-4" />
+                        {isDeletingTask ? "Suppression..." : "Confirmer"}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
             ) : null}
           </div>
         </CardHeader>
