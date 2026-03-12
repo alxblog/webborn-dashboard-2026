@@ -76,13 +76,13 @@ export function DateTimePicker({
   const { date, time } = React.useMemo(() => parseLocalDateTime(value), [value])
 
   return (
-    <div className={cn("flex w-full gap-2", className)}>
+    <div className={cn("flex w-full min-w-0 flex-col gap-2 sm:flex-row", className)}>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
             variant="outline"
             data-empty={!date}
-            className="flex-1 justify-between font-normal data-[empty=true]:text-muted-foreground"
+            className="min-w-0 flex-1 justify-between font-normal data-[empty=true]:text-muted-foreground"
           >
             {date ? format(date, "PPP") : placeholder}
             <ChevronDownIcon className="size-4" />
@@ -107,7 +107,7 @@ export function DateTimePicker({
         step="60"
         value={time}
         onChange={(event) => onChange?.(mergeDateAndTime(date, event.target.value))}
-        className="w-32 appearance-none bg-background [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+        className="w-full appearance-none bg-background sm:w-32 sm:shrink-0 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
       />
     </div>
   )

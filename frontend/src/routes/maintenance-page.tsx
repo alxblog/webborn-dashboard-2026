@@ -871,16 +871,62 @@ export function MaintenancePage() {
         </Card>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+      <section>
         <Card>
           <CardHeader>
-            <CardTitle>Creer une tache</CardTitle>
+            <CardTitle>Vue d'ensemble</CardTitle>
             <CardDescription>
-              Ouvre un formulaire dedie pour creer une tache recurrente,
-              ponctuelle, ou simplement historisable.
+              Les taches recurrentes calculent leur prochaine echeance depuis la
+              derniere execution ou la date de reference.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex items-start">
+          <CardContent className="space-y-4 text-sm text-slate-600">
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-2 flex items-center gap-2 font-medium text-slate-900">
+                <CalendarClock className="size-4" />
+                Recurrente
+              </div>
+              <p>
+                Exemple: changer un filtre tous les 6 mois. Chaque execution
+                recalcule automatiquement l'echeance suivante.
+              </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-2 flex items-center gap-2 font-medium text-slate-900">
+                  <CheckCircle2 className="size-4" />
+                  Ponctuelle
+                </div>
+                <p>
+                  Une tache a date unique. Une fois executee, elle reste dans
+                  l'historique sans rester en retard.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-2 flex items-center gap-2 font-medium text-slate-900">
+                  <History className="size-4" />
+                  Historique libre
+                </div>
+                <p>
+                  Pas d'echeance, uniquement un journal d'executions. Pratique pour
+                  les interventions occasionnelles comme le lavage des vitres.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section>
+        <Card>
+          <CardHeader>
+            <CardTitle>Actions</CardTitle>
+            <CardDescription>
+              Cree de nouvelles taches, importe un CSV ou exporte les donnees
+              actuelles depuis un meme espace.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-3">
             <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
               <DialogTrigger asChild>
                 <Button type="button">
@@ -1090,65 +1136,10 @@ export function MaintenancePage() {
                 </form>
               </DialogContent>
             </Dialog>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Vue d'ensemble</CardTitle>
-            <CardDescription>
-              Les taches recurrentes calculent leur prochaine echeance depuis la
-              derniere execution ou la date de reference.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm text-slate-600">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="mb-2 flex items-center gap-2 font-medium text-slate-900">
-                <CalendarClock className="size-4" />
-                Recurrente
-              </div>
-              <p>
-                Exemple: changer un filtre tous les 6 mois. Chaque execution
-                recalcule automatiquement l'echeance suivante.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="mb-2 flex items-center gap-2 font-medium text-slate-900">
-                <CheckCircle2 className="size-4" />
-                Ponctuelle
-              </div>
-              <p>
-                Une tache a date unique. Une fois executee, elle reste dans
-                l'historique sans rester en retard.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="mb-2 flex items-center gap-2 font-medium text-slate-900">
-                <History className="size-4" />
-                Historique libre
-              </div>
-              <p>
-                Pas d'echeance, uniquement un journal d'executions. Pratique pour
-                les interventions occasionnelles comme le lavage des vitres.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section>
-        <Card>
-          <CardHeader>
-            <CardTitle>Import et export CSV</CardTitle>
-            <CardDescription>
-              Importe des taches et des logs depuis un CSV, ou exporte les donnees
-              actuelles.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-3">
             <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
               <DialogTrigger asChild>
-                <Button type="button">
+                <Button type="button" variant="outline">
                   <Upload className="size-4" />
                   Importer un CSV
                 </Button>
@@ -1338,7 +1329,7 @@ export function MaintenancePage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-        <Card className="min-h-[32rem]">
+        <Card className="min-h-[32rem] min-w-0 self-start xl:sticky xl:top-24">
           <CardHeader>
             <CardTitle>Taches</CardTitle>
             <CardDescription>
@@ -1423,14 +1414,71 @@ export function MaintenancePage() {
           </CardContent>
         </Card>
 
-        <Card className="min-h-[32rem]">
+        <div className="min-w-0 self-start xl:sticky xl:top-24">
+          <Card className="min-h-[32rem] xl:max-h-[calc(100vh-7rem)] xl:overflow-hidden">
           <CardHeader>
-            <CardTitle>Detail et historique</CardTitle>
-            <CardDescription>
-              Enregistre une execution et consulte les passages precedents.
-            </CardDescription>
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <CardTitle>Detail et historique</CardTitle>
+                <CardDescription>
+                  Enregistre une execution et consulte les passages precedents.
+                </CardDescription>
+              </div>
+
+              {selectedTask ? (
+                <Dialog
+                  open={isDeleteDialogOpen}
+                  onOpenChange={setIsDeleteDialogOpen}
+                >
+                  <DialogTrigger asChild>
+                    <Button type="button" variant="outline">
+                      <Trash2 className="size-4" />
+                      Supprimer la tache
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Supprimer cette tache ?</DialogTitle>
+                      <DialogDescription>
+                        Cette action supprimera aussi l'historique associe via
+                        la relation en cascade. Elle est irreversible.
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                      <span className="font-medium text-slate-950">
+                        {selectedTask.title}
+                      </span>
+                      <div className="mt-1">
+                        {selectedLogs.length} execution(s) enregistree(s)
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setIsDeleteDialogOpen(false)}
+                        disabled={isDeletingTask}
+                      >
+                        Annuler
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        onClick={handleDeleteTask}
+                        disabled={isDeletingTask}
+                      >
+                        <Trash2 className="size-4" />
+                        {isDeletingTask ? "Suppression..." : "Confirmer"}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              ) : null}
+            </div>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="min-w-0 space-y-6 xl:overflow-y-auto">
             {selectedTask ? (
               <>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
@@ -1451,58 +1499,6 @@ export function MaintenancePage() {
                     >
                       {getStatusLabel(selectedTask.derivedStatus)}
                     </span>
-                  </div>
-
-                  <div className="mt-4 flex justify-end">
-                    <Dialog
-                      open={isDeleteDialogOpen}
-                      onOpenChange={setIsDeleteDialogOpen}
-                    >
-                      <DialogTrigger asChild>
-                        <Button type="button" variant="outline">
-                          <Trash2 className="size-4" />
-                          Supprimer la tache
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="max-w-md">
-                        <DialogHeader>
-                          <DialogTitle>Supprimer cette tache ?</DialogTitle>
-                          <DialogDescription>
-                            Cette action supprimera aussi l'historique associe via
-                            la relation en cascade. Elle est irreversible.
-                          </DialogDescription>
-                        </DialogHeader>
-
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                          <span className="font-medium text-slate-950">
-                            {selectedTask.title}
-                          </span>
-                          <div className="mt-1">
-                            {selectedLogs.length} execution(s) enregistree(s)
-                          </div>
-                        </div>
-
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => setIsDeleteDialogOpen(false)}
-                            disabled={isDeletingTask}
-                          >
-                            Annuler
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            onClick={handleDeleteTask}
-                            disabled={isDeletingTask}
-                          >
-                            <Trash2 className="size-4" />
-                            {isDeletingTask ? "Suppression..." : "Confirmer"}
-                          </Button>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
                   </div>
 
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -1653,6 +1649,7 @@ export function MaintenancePage() {
             )}
           </CardContent>
         </Card>
+        </div>
       </section>
     </div>
   );
