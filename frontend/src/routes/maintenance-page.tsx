@@ -25,7 +25,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   computeTaskScheduleState,
@@ -1330,27 +1329,64 @@ export function MaintenancePage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-        <Card className="min-h-[32rem] min-w-0 self-start xl:sticky xl:top-24">
+        <Card className="min-h-[32rem] min-w-0 overflow-hidden">
           <CardHeader>
             <CardTitle>Taches</CardTitle>
             <CardDescription>
               Filtre les interventions a traiter et consulte leur historique.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <Tabs
-              value={taskFilter}
-              onValueChange={(value) => setTaskFilter(value as TaskFilter)}
-            >
-              <TabsList variant="line" className="w-full justify-start overflow-auto">
-                <TabsTrigger value="all">Toutes</TabsTrigger>
-                <TabsTrigger value="overdue">En retard</TabsTrigger>
-                <TabsTrigger value="due_soon">Bientot dues</TabsTrigger>
-                <TabsTrigger value="up_to_date">A jour</TabsTrigger>
-                <TabsTrigger value="unscheduled">Sans echeance</TabsTrigger>
-                <TabsTrigger value="active_schedule">Planifiees</TabsTrigger>
-              </TabsList>
-            </Tabs>
+          <CardContent className="min-w-0 space-y-4 overflow-hidden">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={taskFilter === "all" ? "default" : "outline"}
+                onClick={() => setTaskFilter("all")}
+              >
+                Toutes
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={taskFilter === "overdue" ? "default" : "outline"}
+                onClick={() => setTaskFilter("overdue")}
+              >
+                En retard
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={taskFilter === "due_soon" ? "default" : "outline"}
+                onClick={() => setTaskFilter("due_soon")}
+              >
+                Bientot dues
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={taskFilter === "up_to_date" ? "default" : "outline"}
+                onClick={() => setTaskFilter("up_to_date")}
+              >
+                A jour
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={taskFilter === "unscheduled" ? "default" : "outline"}
+                onClick={() => setTaskFilter("unscheduled")}
+              >
+                Sans echeance
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={taskFilter === "active_schedule" ? "default" : "outline"}
+                onClick={() => setTaskFilter("active_schedule")}
+              >
+                Planifiees
+              </Button>
+            </div>
 
             <div className="space-y-3">
               {isLoading ? (
